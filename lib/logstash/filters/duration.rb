@@ -116,6 +116,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
         :parser => parser,
         :format => first_format
       }
+    end
     second_value.each do |second_format|
       case second_format
         when "ISO8601"
@@ -157,15 +158,108 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
         :parser => parser,
         :format => second_format
       }
+    end
   end
 
   public
   def filter(event)
+    @logger.debug? && @logger.debug("Duration filter: received event", :type => event["type"])
     # return nothing unless there's an actual filter even
     return unless filter?(event)
+
+    @first_parsers.each do |field, fieldparsers|
+      @logger.debug? && @logger.debug("Date filter looking for field",
+                                      :type => event["type"], :field => field)
+      next unless event.include?(field)
+
+      fieldvalues = event[field]
+      fieldvalues = [fieldvalues] if !fieldvalues.is_a?(Array)
+      fieldvalues.each do |value|
+        next if value.nil?
+        begin
+          epochmillis = nil
+          success = false
+          last_exception = RuntimeError.new "Unknown"
+          fieldparsers.each do |parserconfig|
+            parserconfig[:parser].each do |parser|
+              begin
+                epochmillis = parser.call(value)
+                success = true
+                break # success
+              rescue StandardError, JavaException => e
+                last_exception = e
+              end
+            end # parserconfig[:parser].each
+            break if success
+          end # fieldparsers.each
+
+          raise last_exception unless success
+
+          # Convert joda DateTime to a ruby Time
+          event["first"] = LogStash::Timestamp.at(epochmillis / 1000, (epochmillis % 1000) * 1000)
+
+          @logger.debug? && @logger.debug("Date parsing done", :value => value, :timestamp => event[@target])
+        filter_matched(event)
+        rescue StandardError, JavaException => e
+          @logger.warn("Failed parsing date from field", :field => field,
+                       :value => value, :exception => e)
+          # Raising here will bubble all the way up and cause an exit.
+          # TODO(sissel): Maybe we shouldn't raise?
+          # TODO(sissel): What do we do on a failure? Tag it like grok does?
+          #raise e
+        end # begin
+      end # fieldvalue.each
+    end # @first_parsers.each    
+
+    @second_parsers.each do |field, fieldparsers|
+      @logger.debug? && @logger.debug("Date filter looking for field",
+                                      :type => event["type"], :field => field)
+        next unless event.include?(field)
+
+        fieldvalues = event[field]
+        fieldvalues = [fieldvalues] if !fieldvalues.is_a?(Array)
+        fieldvalues.each do |value|
+          next if value.nil?
+          begin
+            epochmillis = nil
+            success = false
+            last_exception = RuntimeError.new "Unknown"
+            fieldparsers.each do |parserconfig|
+              parserconfig[:parser].each do |parser|
+                begin
+                  epochmillis = parser.call(value)
+                  success = true
+                  break # success
+                rescue StandardError, JavaException => e
+                  last_exception = e
+                end
+              end # parserconfig[:parser].each
+              break if success
+            end # fieldparsers.each
+
+            raise last_exception unless success
+
+            # Convert joda DateTime to a ruby Time
+            event["second"] = LogStash::Timestamp.at(epochmillis / 1000, (epochmillis % 1000) * 1000)
+
+            @logger.debug? && @logger.debug("Date parsing done", :value => value, :timestamp => event[@target])
+          filter_matched(event)
+          rescue StandardError, JavaException => e
+            @logger.warn("Failed parsing date from field", :field => field,
+                         :value => value, :exception => e)
+            # Raising here will bubble all the way up and cause an exit.
+            # TODO(sissel): Maybe we shouldn't raise?
+            #raise e
+        end # begin
+      end # fieldvalue.each
+    end # @second_parsers.each
+
     if @field_name
-      event[@field_name] = "duration"
+      event[@field_name] = "plop"
+    else 
+      event["duration"] = "plop"
     end
-    filter_matched(event)
+    
+    return event 
   end # def filter
 end # class LogStash::Filters::Duration
