@@ -16,6 +16,8 @@ require "logstash/namespace"
 #         field_name => "new field name"
 #         first_date => ["first_logdate", "MMM dd YYY HH:mm:ss"]
 #         second_date => ["second_logdate", "MMM dd YYY HH:mm:ss"]
+#         time_unit => one of "millisecond", "second", "day", "week", "year"
+#         prettify_duration => one of true / false
 #       }
 #     }
 #
@@ -30,6 +32,8 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
   #     field_name => ... # string (optionnal), default: "duration"
   #     first_date => ... # hash (requiered), default: {}
   #     second_date => ... # hash (requiered), default: {}
+  #     time_unit => ... # string (optionnal), default: "second"
+  #     prettify_duration => ... # boolean (optionnal), default: false
   #   }
   # }
   config_name "duration"
@@ -45,6 +49,14 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
   # The pair of second log date filed name and the date pattern following Joda-Time (java time library):
   # [joda.time.format.DateTimeFormat](http://joda-time.sourceforge.net/apidocs/org/joda/time/format/DateTimeFormat.html)
   config :second_date, :validate => :array, :default => []
+
+  # The time unit needed to be used for time interval calculation.
+  config :time_unit, :validate => :string
+  
+  # Apply Time.at(total_seconds).utc.strftime("%H:%M:%S") on the output result
+  # Available for time interval < 24 hours
+  # Will not display millisecond values
+  config :prettify_duration, :calidate => :boolean
 
   public
   def initialize(config = {})
@@ -112,7 +124,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
           end
           parser = lambda { |date| joda_parser.parseMillis(date) }
       end
-      @logger.debug("Generating first date parser", :field => first_field, :format => first_format)
+      @logger.info("Generating first date parser", :field => first_field, :format => first_format)
       @logger.debug("Adding type with date config", :type => @type,
                     :field => first_field, :format => first_format)
       @first_parsers[first_field] << {
@@ -157,7 +169,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
           end
           parser = lambda { |date| joda_parser.parseMillis(date) }
       end
-      @logger.debug("Generating second date parser", :field => second_field, :format => second_format)
+      @logger.info("Generating second date parser", :field => second_field, :format => second_format)
       @logger.debug("Adding type with date config", :type => @type,
                     :field => second_field, :format => second_format)
       @second_parsers[second_field] << {
@@ -186,7 +198,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
       fieldparsers.each do |parserconfig|
         parser = parserconfig[:parser]
         begin
-          @logger.debug("First DAte Array values", :value => event[@first_field_name])
+          @logger.info("First DAte Array values", :value => event[@first_field_name])
           epochmillis = parser.call(event[@first_field_name])
           success = true
           break # success
@@ -197,7 +209,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
 
       raise last_exception unless success
      
-      @logger.debug("epochmillis", :value => epochmillis) 
+      @logger.info("epochmillis", :value => epochmillis) 
       first_date = Time.at(epochmillis / 1000, (epochmillis % 1000) * 1000)      
       
     end # @parsers.each
@@ -210,7 +222,7 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
       fieldparsers.each do |parserconfig|
         parser = parserconfig[:parser]
         begin
-          @logger.debug("First DAte Array values", :value => event[@second_field_name])
+          @logger.info("First DAte Array values", :value => event[@second_field_name])
           epochmillis = parser.call(event[@second_field_name])
           success = true
           break # success
@@ -221,17 +233,73 @@ class LogStash::Filters::Duration < LogStash::Filters::Base
 
       raise last_exception unless success
 
-      @logger.debug("epochmillis", :value => epochmillis)
+      @logger.info("epochmillis", :value => epochmillis)
       second_date = Time.at(epochmillis / 1000, (epochmillis % 1000) * 1000)
 
     end # @parsers.each
+    
+    nb_sec = (second_date.to_f - first_date.to_f)
 
-    if @field_name
-      event[@field_name] = (second_date - first_date).round
-    else 
-      event["duration"] = (second_date - first_date).round
+    if @time_unit
+      case @time_unit
+        when "millisecond"
+          if @field_name
+            event[@field_name] = (nb_sec * 1000).round
+          else
+            event["duration"] = (nb_sec * 1000).round
+          end
+        when "second"
+          if @field_name
+            event[@field_name] = (nb_sec).round
+          else
+            event["duration"] = (nb_sec).round
+          end
+        when "minute"
+          if @field_name
+            event[@field_name] = (nb_sec / 60).round
+          else
+            event["duration"] = (nb_sec / 60).round
+          end
+        when "hour"
+          if @field_name
+            event[@field_name] = (nb_sec / 3600).round
+          else
+            event["duration"] = (nb_sec / 3600).round
+          end
+        when "day"
+          if @field_name
+            event[@field_name] = (nb_sec / 86400).round
+          else
+            event["duration"] = (nb_sec / 86400).round
+          end
+        when "week"
+          if @field_name
+            event[@field_name] = (nb_sec / 604800).round
+          else
+            event["duration"] = (nb_sec / 604800).round
+          end
+        when "year"
+          if @field_name
+            event[@field_name] = (nb_sec / 31536000).round
+          else
+            event["duration"] = (nb_sec / 31536000).round
+          end
+      end 
+    else  
+      if @field_name
+        event[@field_name] = (nb_sec).round
+      else 
+        event["duration"] = (nb_sec).round
+      end
     end
-  
+
+    if @prettify_duration
+      if @field_name
+        event[@field_name] = Time.at(nb_sec).utc.strftime("%H:%M:%S")    
+      else 
+        event["duration"] = Time.at(nb_sec).utc.strftime("%H:%M:%S")
+      end
+    end
     filter_matched(event)  
   end # def filter
 end # class LogStash::Filters::Duration
