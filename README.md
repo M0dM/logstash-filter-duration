@@ -1,6 +1,7 @@
 # logstash-filter-duration
 
 *The filter will calculate the duration between two given dates (first_date and last_date).*
+
 The goal of this filter is to add a new field containing the value of the time interval between the two given dates.
 
 The date formats allowed are anything allowed by Joda-Time (java time library). You can see the docs for this format here:
