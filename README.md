@@ -72,5 +72,7 @@ One of :
 * Default value is false
  
 Apply Time.at(total_seconds).utc.strftime("%H:%M:%S") on the output field value.
+
 Available for time interval < 24 hours.
+
 Will not display millisecond values.
