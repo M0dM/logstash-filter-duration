@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
 
   s.name            = 'logstash-filter-duration'
-  s.version         = '0.0.1'
+  s.version         = '0.1.0'
   s.licenses        = ['Apache License (2.0)']
   s.summary         = "This filter will add a new field with the time interval in second from two given dates."
   s.description     = "This gem is a logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/plugin install gemname. This gem is not a stand-alone program"
